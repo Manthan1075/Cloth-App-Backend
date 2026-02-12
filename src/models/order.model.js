@@ -1,57 +1,76 @@
 import mongoose from "mongoose";
 
-const productSchema = new mongoose.Schema(
+const orderSchema = new mongoose.Schema(
   {
-    name: {
-      type: String,
-      required: true,
-    },
-    price: {
-      type: Number,
-      required: true,
-    },
-    category: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Category",
-    },
-    description: {
-      type: String,
-      required: true,
-    },
-    images: [
-      {
+    customer: {
+      name: {
         type: String,
         required: true,
       },
-    ],
-    stock: {
-      type: Number,
-      required: true,
-    },
-    isAvailable: {
-      type: Boolean,
-      default: true,
-    },
-    size: [{ type: String }],
-    gender: {
-      type: String,
-      enum: ["men", "women", "boys", "girls"],
-    },
-    color: [{ type: String }],
-    keywords: [
-      {
+      contact: {
+        type: Number,
+        required: true,
+      },
+      address: {
         type: String,
+        required: true,
+      },
+    },
+    items: [
+      {
+        product: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "Product",
+        },
+        price: {
+          type: Number,
+          required: true,
+        },
+        size: {
+          type: String,
+          required: true,
+        },
+        color: {
+          type: String,
+          required: true,
+        },
+        fabric: {
+          type: String,
+          required: true,
+        },
+        quantity: {
+          type: Number,
+          default: 1,
+        },
       },
     ],
-    slug: {
+    subTotal: {
+      type: Number,
+    },
+    deliveryCharges: {
+      type: Number,
+      default: 0,
+    },
+    totalAmount: {
+      type: Number,
+    },
+    status: {
       type: String,
-      unique: true,
+      enum: [
+        "Pending",
+        "Confirmed",
+        "Packed",
+        "Shipped",
+        "Delivered",
+        "Cancelled",
+      ],
+    },
+    isDelivered: {
+      type: Boolean,
+      default: false,
     },
   },
-
-  { timestamps: true }
+  { timestamps: true },
 );
 
-productSchema.index({ name: "text", keywords: "text" });
-
-export const Product = mongoose.model("Product", productSchema);
+export const Order = mongoose.model("Order", orderSchema);
