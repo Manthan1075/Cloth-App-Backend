@@ -20,8 +20,8 @@ const productSchema = new mongoose.Schema(
     },
     images: [
       {
-        type: String,
-        required: true,
+        url: String,
+        fileId: String,
       },
     ],
     stock: {
@@ -43,10 +43,6 @@ const productSchema = new mongoose.Schema(
         type: String,
       },
     ],
-    slug: {
-      type: String,
-      unique: true,
-    },
   },
 
   { timestamps: true },
