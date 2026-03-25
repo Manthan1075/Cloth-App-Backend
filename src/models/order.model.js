@@ -28,7 +28,6 @@ const orderSchema = new mongoose.Schema(
         },
         size: {
           type: String,
-          required: true,
         },
         color: {
           type: String,
@@ -58,6 +57,7 @@ const orderSchema = new mongoose.Schema(
       type: String,
       enum: [
         "Pending",
+        "Processing",
         "Confirmed",
         "Packed",
         "Shipped",
