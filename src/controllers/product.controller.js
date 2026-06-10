@@ -28,7 +28,7 @@ export const addProduct = async (req, res) => {
     let uploadedImages = [];
 
     if (images && images.length > 0) {
-      const uploadPromises = images.map((img) => uploadImage(img));
+      const uploadPromises = images.map((img) => uploadImage(img, "Product"));
 
       const results = await Promise.all(uploadPromises);
 
@@ -241,4 +241,36 @@ export const deleteProduct = async (req, res) => {
   }
 };
 
-// export const Product = async (req, res) => {};
+export const getProductId = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!id) {
+      return res.status(400).json({
+        success: false,
+        message: "Product ID is required",
+      });
+    }
+
+    const product = await Product.findById(id);
+
+    if (!product) {
+      return res.status(404).json({
+        success: false,
+        message: "Product not found!",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Product fetched successfully",
+      product,
+    });
+  } catch (error) {
+    console.log("Error Occur While Get Product By Id :", error);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+};

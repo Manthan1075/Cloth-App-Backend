@@ -15,6 +15,9 @@ const categorySchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "Category",
     },
+    image: {
+      type: String,
+    },
     slug: {
       type: String,
       required: true,

@@ -1,8 +1,10 @@
 import { Category } from "../models/category.model.js";
+import { uploadImage } from "../utils/imageUpload.js";
 
 export const addCategory = async (req, res) => {
   try {
     const { name, parentCategory } = req.body;
+    const image = req.file;
 
     if (!name) {
       return res
@@ -20,10 +22,15 @@ export const addCategory = async (req, res) => {
         .status(404)
         .json({ success: false, error: "Category already exists" });
     }
+    let uploadedImage = null;
+    if (image) {
+      uploadedImage = await uploadImage(image, "Category");
+    }
 
     const category = await Category.create({
       name,
       parentCategory,
+      image: uploadedImage,
       slug,
     });
 
