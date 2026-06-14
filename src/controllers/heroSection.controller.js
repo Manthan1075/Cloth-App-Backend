@@ -1,6 +1,6 @@
-import Product from "../models/product.model.js";
-import Banner from "../models/banner.model.js";
-import Category from "../models/category.model.js";
+import { Product } from "../models/product.model.js";
+import { Banner } from "../models/banner.model.js";
+import { Category } from "../models/category.model.js";
 
 export const getHeroSection = async (req, res) => {
   try {
@@ -78,7 +78,14 @@ export const deleteBanner = async (req, res) => {
 
 export const getBanners = async (req, res) => {
   try {
-    const banners = await Banner.find({});
+    const { id } = req.params;
+
+    let banners = null;
+    if (id) {
+      banners = await Banner.findById(id);
+    } else {
+      banners = await Banner.find({});
+    }
 
     return res.status(200).json({
       success: true,

@@ -12,12 +12,20 @@ const adminSchema = new mongoose.Schema(
       required: true,
     },
     contact: {
-      type: Number,
+      type: String,
       required: true,
+    },
+    email: {
+      type: String,
+      required: true,
+      unique: true,
     },
     role: {
       type: String,
       default: "admin",
+    },
+    notificationToken: {
+      type: String,
     },
   },
   { timestamps: true },

@@ -11,7 +11,7 @@ const router = Router();
 
 router.get("/get", getHeroSection);
 router.put("/add-banner", upload.single("banner"), addBanner);
-router.get("/delete-banner", deleteBanner);
+router.get("/delete-banner/:id", deleteBanner);
 router.get("/get-banner", getBanners);
 
 export default router;

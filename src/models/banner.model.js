@@ -12,4 +12,4 @@ const bannerSchema = new mongoose.Schema(
   { timestamps: true },
 );
 
-export default mongoose.model("Banner", bannerSchema);
+export const Banner =  mongoose.model("Banner", bannerSchema);
