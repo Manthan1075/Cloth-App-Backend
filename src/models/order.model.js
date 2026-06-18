@@ -2,75 +2,91 @@ import mongoose from "mongoose";
 
 const orderSchema = new mongoose.Schema(
   {
+    orderNumber: {
+      type: String,
+      required: true,
+      unique: true,
+      trim: true,
+    },
+
     customer: {
-      name: {
-        type: String,
-        required: true,
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+    },
+
+    orderItems: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "OrderItem",
       },
-      contact: {
-        type: Number,
-        required: true,
-      },
+    ],
+
+    deliveryAddress: {
       address: {
         type: String,
         required: true,
       },
-    },
-    items: [
-      {
-        product: {
-          type: mongoose.Schema.Types.ObjectId,
-          ref: "Product",
-        },
-        price: {
-          type: Number,
-          required: true,
-        },
-        size: {
-          type: String,
-        },
-        color: {
-          type: String,
-          required: true,
-        },
-        fabric: {
-          type: String,
-          required: true,
-        },
-        quantity: {
-          type: Number,
-          default: 1,
-        },
+
+      city: {
+        type: String,
+        required: true,
       },
-    ],
+
+      state: {
+        type: String,
+        required: true,
+      },
+
+      pincode: {
+        type: String,
+        required: true,
+      },
+    },
+
     subTotal: {
       type: Number,
+      required: true,
+      min: 0,
     },
+
     deliveryCharges: {
       type: Number,
       default: 0,
+      min: 0,
     },
+
     totalAmount: {
       type: Number,
+      required: true,
+      min: 0,
     },
+
     status: {
       type: String,
       enum: [
-        "Pending",
-        "Processing",
-        "Confirmed",
-        "Packed",
-        "Shipped",
-        "Delivered",
-        "Cancelled",
+        "PLACED",
+        "CONFIRMED",
+        "PACKED",
+        "SHIPPED",
+        "DELIVERED",
+        "RETURN_REQUESTED",
+        "RETURN_APPROVED",
+        "RETURN_REJECTED",
+        "RETURNED",
+        "CANCELLED",
       ],
-    },
-    isDelivered: {
-      type: Boolean,
-      default: false,
+      default: "PLACED",
     },
   },
-  { timestamps: true },
+  {
+    timestamps: true,
+  },
 );
+
+orderSchema.index({
+  customer: 1,
+  createdAt: -1,
+});
 
 export const Order = mongoose.model("Order", orderSchema);
