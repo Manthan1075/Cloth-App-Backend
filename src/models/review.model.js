@@ -33,7 +33,7 @@ const reviewSchema = new mongoose.Schema(
         fileId: String,
       },
     ],
-    },
+  },
   {
     timestamps: true,
   },

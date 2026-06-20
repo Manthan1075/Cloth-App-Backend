@@ -4,6 +4,7 @@ import orderRouter from "./routes/order.routes.js";
 import categoryRouter from "./routes/category.routes.js";
 import heroSectionRouter from "./routes/heroSection.route.js";
 import AdminRouter from "./routes/admin.routes.js";
+import userRouter from "./routes/user.routes.js";
 import cookieParser from "cookie-parser";
 
 const app = express();
@@ -17,6 +18,7 @@ app.use("/api/orders", orderRouter);
 app.use("/api/category", categoryRouter);
 app.use("/api/hero-section", heroSectionRouter);
 app.use("/api/admin", AdminRouter);
+app.use("/api/user", userRouter);
 
 app.get("/", (req, res) => {
   res.send("Welcome to CK FASHION API");

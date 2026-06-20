@@ -22,11 +22,6 @@ const categorySchema = new mongoose.Schema(
       default: null,
     },
 
-    imageFileId: {
-      type: String,
-      default: null,
-    },
-
     parentCategory: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Category",

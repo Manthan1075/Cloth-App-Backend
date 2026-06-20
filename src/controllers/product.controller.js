@@ -68,33 +68,48 @@ export const addProduct = async (req, res) => {
 
 export const getProducts = async (req, res) => {
   try {
-    const { category, keywords, size, price, gender, page, limit, sort, date } =
+    const { category, keyword, size, price, gender, page, limit, sort, date } =
       req.query;
 
     let filter = {};
 
-    if (category) filter.category = category;
+    if (keyword) {
+      const escaped = keyword.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const regex = new RegExp(escaped, "i");
+      filter.$or = [
+        { name: regex },
+        { description: regex },
+        { keywords: regex },
+      ];
+    }
 
-    if (gender) filter.gender = gender;
+    if (category) {
+      filter.category = new mongoose.Types.ObjectId(category);
+    }
 
-    if (keywords) {
-      filter.keyword = { $in: keywords.split(",") };
+    if (gender) {
+      filter.gender = gender;
     }
 
     if (size) {
-      filter.size = { $in: size.split(",") };
+      const sizeArray = Array.isArray(size) ? size : size.split(",");
+      filter.size = { $in: sizeArray };
     }
 
     if (price) {
       const [min, max] = price.split(",").map(Number);
-      filter.price = { $gte: min, $lte: max };
+      if (!isNaN(min) && !isNaN(max)) {
+        filter.price = { $gte: min, $lte: max };
+      }
     }
 
     if (date) {
       const [start, end] = date.split(",");
+      const endDate = new Date(end);
+      endDate.setHours(23, 59, 59, 999);
       filter.createdAt = {
         $gte: new Date(start),
-        $lte: new Date(end),
+        $lte: endDate,
       };
     }
 
@@ -103,7 +118,6 @@ export const getProducts = async (req, res) => {
     const skip = (pageNumber - 1) * limitNumber;
 
     let sortOption = { createdAt: -1 };
-
     if (sort === "oldest") sortOption = { createdAt: 1 };
     if (sort === "price-low") sortOption = { price: 1 };
     if (sort === "price-high") sortOption = { price: -1 };
@@ -113,7 +127,7 @@ export const getProducts = async (req, res) => {
       Product.countDocuments(filter),
     ]);
 
-    if (!products && products.length == 0) {
+    if (!products || products.length === 0) {
       return res.status(404).json({
         success: false,
         message: "No products found!",
@@ -128,7 +142,7 @@ export const getProducts = async (req, res) => {
       totalProducts,
     });
   } catch (error) {
-    console.log("Error Occur While Fetching Products ::", error);
+    console.error("Error occurred while fetching products ::", error);
     return res.status(500).json({
       success: false,
       message: "Internal server error",
@@ -137,16 +151,8 @@ export const getProducts = async (req, res) => {
 };
 
 export const editProduct = async (req, res) => {
-  const { id } = req.params;
-
   try {
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid product ID",
-      });
-    }
-
+    const { id } = req.params;
     const {
       name,
       price,

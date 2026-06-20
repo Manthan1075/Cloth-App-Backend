@@ -100,7 +100,7 @@ export const orderCanceledTemplate = ({
   `;
 };
 
-export const forgetPassTemplate = ({ link }) => {
+export const forgetPassTemplate = ({ redirectUrl }) => {
   return `
     <div style="font-family:Arial,sans-serif;max-width:600px;margin:auto;padding:20px;border:1px solid #e5e7eb;border-radius:10px;">
       
@@ -115,7 +115,7 @@ export const forgetPassTemplate = ({ link }) => {
       </p>
 
       <a
-        href="${link}"
+        href="${redirectUrl}"
         style="${buttonStyle}"
       >
         Reset Password

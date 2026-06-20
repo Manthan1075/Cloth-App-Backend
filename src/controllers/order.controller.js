@@ -1,70 +1,225 @@
 import { Order } from "../models/order.model.js";
+import { Product } from "../models/product.model.js";
+import { User } from "../models/user.model.js";
+
 
 export const createOrder = async (req, res) => {
   try {
     const { customer, items, deliveryCharges = 0 } = req.body;
-    const { name, contact, address } = customer;
 
-    if (!name || !contact || !address) {
+    if (!customer) {
       return res.status(400).json({
         success: false,
-        message: "Customer Detail Is Missing!",
+        message: "Customer details are required",
       });
     }
 
-    if (!items || !Array.isArray(items) || items.length === 0) {
+    const {
+      name,
+      phone,
+      email,
+      address,
+    } = customer;
+
+    if (!name || !phone || !address) {
       return res.status(400).json({
         success: false,
-        message: "Order Must Contain At Least One Item!",
+        message:
+          "Name, phone and address are required",
       });
     }
 
-    const requiredField = ["product", "price", "size", "color", "fabric"];
+    // ==========================
+    // ITEMS VALIDATION
+    // ==========================
+
+    if (
+      !items ||
+      !Array.isArray(items) ||
+      items.length === 0
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Order must contain at least one product",
+      });
+    }
+
+    // ==========================
+    // CREATE / UPDATE USER
+    // ==========================
+
+    let user = await User.findOne({
+      phone,
+    });
+
+    if (!user) {
+      user = await User.create({
+        username: name,
+        phone,
+        email,
+        address,
+      });
+    } else {
+      user.username = name;
+
+      if (email) {
+        user.email = email;
+      }
+
+      user.address = address;
+
+      await user.save();
+    }
+
     let subTotal = 0;
 
-    for (let i = 0; i < items.length; i++) {
-      const item = items[i];
+    const orderItems = [];
 
-      const missingFields = requiredField.filter((field) => !item[field]);
-      if (missingFields.length > 0) {
+    const stockUpdates = [];
+
+    for (const item of items) {
+      const {
+        product,
+        color,
+        size,
+        quantity = 1,
+      } = item;
+
+      if (!product) {
         return res.status(400).json({
           success: false,
-          message: `Item ${i + 1} is missing: ${missingFields.join(", ")}`,
+          message:
+            "Product ID is required",
         });
       }
 
-      const quantity = item.quantity && item.quantity > 0 ? item.quantity : 1;
-      subTotal += item.price * quantity;
-    }
+      const productData =
+        await Product.findById(
+          product
+        );
 
-    const totalAmount = subTotal + deliveryCharges;
+      if (!productData) {
+        return res.status(404).json({
+          success: false,
+          message:
+            "Product not found",
+        });
+      }
 
-    const order = await Order.create({
-      customer,
-      items,
-      subTotal,
-      deliveryCharges,
-      totalAmount,
-      status: "Pending",
-    });
+      if (
+        !productData.isAvailable
+      ) {
+        return res.status(400).json({
+          success: false,
+          message: `${productData.name} is currently unavailable`,
+        });
+      }
 
-    if (!order) {
-      return res.status(500).json({
-        success: false,
-        message: "Failed To Order Products. Please Try Again!",
+      if (
+        productData.stock <
+        quantity
+      ) {
+        return res.status(400).json({
+          success: false,
+          message: `Only ${productData.stock} stock available for ${productData.name}`,
+        });
+      }
+
+      // Use DB price only
+      const itemPrice =
+        productData.price;
+
+      subTotal +=
+        itemPrice * quantity;
+
+      orderItems.push({
+        product:
+          productData._id,
+        price: itemPrice,
+        color,
+        size,
+        quantity,
+      });
+
+      stockUpdates.push({
+        productData,
+        quantity,
       });
     }
 
+    // ==========================
+    // TOTAL CALCULATION
+    // ==========================
+
+    const totalAmount =
+      subTotal +
+      Number(deliveryCharges);
+
+    // ==========================
+    // CREATE ORDER
+    // ==========================
+
+    const order =
+      await Order.create({
+        customer: {
+          name,
+          phone,
+          address,
+        },
+
+        items: orderItems,
+
+        subTotal,
+
+        deliveryCharges,
+
+        totalAmount,
+
+        status: "Pending",
+
+        isDelivered: false,
+      });
+
+    // ==========================
+    // UPDATE STOCK
+    // ==========================
+
+    for (const stockItem of stockUpdates) {
+      stockItem.productData.stock -=
+        stockItem.quantity;
+
+      if (
+        stockItem.productData.stock <=
+        0
+      ) {
+        stockItem.productData.isAvailable =
+          false;
+      }
+
+      await stockItem.productData.save();
+    }
+
+    // ==========================
+    // RESPONSE
+    // ==========================
+
     return res.status(201).json({
       success: true,
-      message: "Order Booked Successfully",
+      message:
+        "Order placed successfully",
       order,
     });
   } catch (error) {
-    console.log("Error While Create Order ::", error);
+    console.log(
+      "Create Order Error:",
+      error
+    );
+
     return res.status(500).json({
       success: false,
-      message: "Internal Server Error Please Try Later!",
+      message:
+        "Internal server error",
     });
   }
 };

@@ -52,3 +52,16 @@ export const deleteImage = async (fileId) => {
     throw error;
   }
 };
+
+export const getCloudinaryPublicIdFromUrl = (url) => {
+  if (!url || typeof url !== "string") return null;
+
+  const uploadIndex = url.indexOf("/upload/");
+  if (uploadIndex === -1) return null;
+
+  const afterUpload = url.slice(uploadIndex + "/upload/".length);
+  const withoutVersion = afterUpload.replace(/^v\d+\//, "");
+  const withoutExtension = withoutVersion.replace(/\.[^/.]+$/, "");
+
+  return withoutExtension || null;
+};

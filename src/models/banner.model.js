@@ -2,18 +2,32 @@ import mongoose from "mongoose";
 
 const bannerSchema = new mongoose.Schema(
   {
+    title: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+
     image: {
       type: String,
       required: true,
     },
-    imageFileId: {
+
+    redirectUrl: {
       type: String,
-      default: null,
+      trim: true,
+      default: "",
     },
-    redirectUrl: String,
-    title: String,
+
+    isActive: {
+      type: Boolean,
+      default: true,
+      index: true,
+    },
   },
-  { timestamps: true },
+  {
+    timestamps: true,
+  },
 );
 
 export const Banner = mongoose.model("Banner", bannerSchema);

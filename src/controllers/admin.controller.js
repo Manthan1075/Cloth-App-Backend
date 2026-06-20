@@ -107,7 +107,7 @@ export const adminLogin = async (req, res) => {
       subject: "Testing Email",
       type: "forgetPassword",
       data: {
-        link: "https://google.com",
+        redirectUrl: "https://google.com",
       },
     });
 
@@ -320,13 +320,13 @@ export const forgetPassword = async (req, res) => {
       subject: "Password Reset Request",
       type: "forgetPassword",
       data: {
-        link: `${process.env.FRONTEND_URL}/reset-password/${resetToken}`,
+        redirectUrl: `${process.env.FRONTEND_URL}/reset-password/${resetToken}`,
       },
     });
 
     return res.status(200).json({
       success: true,
-      message: "Reset link sent to your email",
+      message: "Reset redirectUrl sent to your email",
     });
   } catch (error) {
     console.log("Error while forget password:", error);
