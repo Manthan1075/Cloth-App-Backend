@@ -45,15 +45,16 @@ const productVariantSchema = new mongoose.Schema(
       min: 0,
     },
 
-    image: {
+    coverImage: {
       type: String,
       default: null,
     },
 
-    imageFileId: {
-      type: String,
-      default: null,
-    },
+    images: [
+      {
+        type: String
+      }
+    ],
 
     isActive: {
       type: Boolean,
