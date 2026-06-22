@@ -1,394 +1,1002 @@
+import mongoose from "mongoose";
 import { Order } from "../models/order.model.js";
-import { Product } from "../models/product.model.js";
+import { OrderItem } from "../models/orderItem.model.js";
 import { User } from "../models/user.model.js";
+import { Product } from "../models/product.model.js";
+import { ProductVariant } from "../models/productVariant.model.js";
 
+const sendServerError = (res, error, label) => {
+  console.error(`${label}:`, error);
+
+  return res.status(500).json({
+    success: false,
+    message: "Something went wrong on our side. Please try again later.",
+  });
+};
+
+const isValidObjectId = (id) => mongoose.Types.ObjectId.isValid(id);
+
+const generateOrderNumber = () => {
+  const random = Math.floor(1000 + Math.random() * 9000);
+
+  return `CKF-${Date.now()}-${random}`;
+};
+
+const ORDER_STATUSES = [
+  "PLACED",
+  "CONFIRMED",
+  "PACKED",
+  "SHIPPED",
+  "DELIVERED",
+  "RETURN_REQUESTED",
+  "RETURN_APPROVED",
+  "RETURN_REJECTED",
+  "RETURNED",
+  "CANCELLED",
+];
 
 export const createOrder = async (req, res) => {
-  try {
-    const { customer, items, deliveryCharges = 0 } = req.body;
+  const session = await mongoose.startSession();
 
-    if (!customer) {
-      return res.status(400).json({
-        success: false,
-        message: "Customer details are required",
-      });
-    }
+  try {
+    session.startTransaction();
 
     const {
-      name,
-      phone,
-      email,
-      address,
-    } = customer;
+      customerId,
+      deliveryAddress,
+      items,
+      deliveryCharges = 0,
+    } = req.body;
 
-    if (!name || !phone || !address) {
+    if (!customerId) {
       return res.status(400).json({
         success: false,
-        message:
-          "Name, phone and address are required",
+        message: "Customer id is required.",
       });
     }
 
-    // ==========================
-    // ITEMS VALIDATION
-    // ==========================
-
-    if (
-      !items ||
-      !Array.isArray(items) ||
-      items.length === 0
-    ) {
+    if (!isValidObjectId(customerId)) {
       return res.status(400).json({
         success: false,
-        message:
-          "Order must contain at least one product",
+        message: "Invalid customer id.",
       });
     }
 
-    // ==========================
-    // CREATE / UPDATE USER
-    // ==========================
-
-    let user = await User.findOne({
-      phone,
-    });
-
-    if (!user) {
-      user = await User.create({
-        username: name,
-        phone,
-        email,
-        address,
+    if (!items || !Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Order must contain at least one item.",
       });
-    } else {
-      user.username = name;
+    }
 
-      if (email) {
-        user.email = email;
-      }
+    const customer = await User.findById(customerId);
 
-      user.address = address;
-
-      await user.save();
+    if (!customer) {
+      return res.status(404).json({
+        success: false,
+        message: "Customer not found.",
+      });
     }
 
     let subTotal = 0;
 
-    const orderItems = [];
-
-    const stockUpdates = [];
+    const orderItemsData = [];
 
     for (const item of items) {
-      const {
-        product,
-        color,
-        size,
-        quantity = 1,
-      } = item;
+      const { variantId, quantity } = item;
 
-      if (!product) {
-        return res.status(400).json({
-          success: false,
-          message:
-            "Product ID is required",
-        });
+      if (!variantId || !quantity) {
+        throw new Error("Variant and quantity are required.");
       }
 
-      const productData =
-        await Product.findById(
-          product
+      const variant = await ProductVariant.findById(variantId)
+        .populate("product")
+        .session(session);
+
+      if (!variant) {
+        throw new Error("Variant not found.");
+      }
+
+      if (!variant.isActive) {
+        throw new Error(
+          `${variant.color} ${variant.size} variant is unavailable.`,
         );
-
-      if (!productData) {
-        return res.status(404).json({
-          success: false,
-          message:
-            "Product not found",
-        });
       }
 
-      if (
-        !productData.isAvailable
-      ) {
-        return res.status(400).json({
-          success: false,
-          message: `${productData.name} is currently unavailable`,
-        });
+      if (variant.currentStock < quantity) {
+        throw new Error(
+          `Only ${variant.currentStock} stock available for ${variant.color}-${variant.size}.`,
+        );
       }
 
-      if (
-        productData.stock <
-        quantity
-      ) {
-        return res.status(400).json({
-          success: false,
-          message: `Only ${productData.stock} stock available for ${productData.name}`,
-        });
-      }
+      const totalPrice = variant.sellingPrice * quantity;
 
-      // Use DB price only
-      const itemPrice =
-        productData.price;
+      subTotal += totalPrice;
 
-      subTotal +=
-        itemPrice * quantity;
+      orderItemsData.push({
+        product: variant.product._id,
 
-      orderItems.push({
-        product:
-          productData._id,
-        price: itemPrice,
-        color,
-        size,
+        variant: variant._id,
+
         quantity,
-      });
 
-      stockUpdates.push({
-        productData,
-        quantity,
+        sellingPrice: variant.sellingPrice,
+
+        totalPrice,
       });
     }
 
-    // ==========================
-    // TOTAL CALCULATION
-    // ==========================
+    const totalAmount = subTotal + Number(deliveryCharges);
 
-    const totalAmount =
-      subTotal +
-      Number(deliveryCharges);
+    const order = await Order.create(
+      [
+        {
+          orderNumber: generateOrderNumber(),
 
-    // ==========================
-    // CREATE ORDER
-    // ==========================
+          customer: customer._id,
 
-    const order =
-      await Order.create({
-        customer: {
-          name,
-          phone,
-          address,
+          deliveryAddress,
+
+          subTotal,
+
+          deliveryCharges,
+
+          totalAmount,
+
+          status: "PLACED",
+
+          isStockDeducted: false,
         },
+      ],
+      { session },
+    );
 
-        items: orderItems,
+    const createdOrder = order[0];
 
-        subTotal,
+    const orderItems = [];
 
-        deliveryCharges,
+    for (const item of orderItemsData) {
+      const orderItem = await OrderItem.create(
+        [
+          {
+            order: createdOrder._id,
 
-        totalAmount,
+            product: item.product,
 
-        status: "Pending",
+            variant: item.variant,
 
-        isDelivered: false,
-      });
+            quantity: item.quantity,
 
-    // ==========================
-    // UPDATE STOCK
-    // ==========================
+            sellingPrice: item.sellingPrice,
 
-    for (const stockItem of stockUpdates) {
-      stockItem.productData.stock -=
-        stockItem.quantity;
+            totalPrice: item.totalPrice,
+          },
+        ],
+        { session },
+      );
 
-      if (
-        stockItem.productData.stock <=
-        0
-      ) {
-        stockItem.productData.isAvailable =
-          false;
-      }
-
-      await stockItem.productData.save();
+      orderItems.push(orderItem[0]._id);
     }
 
-    // ==========================
-    // RESPONSE
-    // ==========================
+    createdOrder.orderItems = orderItems;
+
+    await createdOrder.save({
+      session,
+    });
+
+    await session.commitTransaction();
 
     return res.status(201).json({
       success: true,
-      message:
-        "Order placed successfully",
+      message: "Order placed successfully.",
+
+      order: createdOrder,
+    });
+  } catch (error) {
+    await session.abortTransaction();
+
+    return sendServerError(res, error, "Create Order Error");
+  } finally {
+    session.endSession();
+  }
+};
+
+export const getOrders = async (req, res) => {
+  try {
+    const {
+      page = 1,
+      limit = 10,
+      status,
+      customer,
+      sort = "newest",
+    } = req.query;
+
+    const pageNumber = Math.max(Number(page) || 1, 1);
+
+    const limitNumber = Math.min(Math.max(Number(limit) || 10, 1), 100);
+
+    const skip = (pageNumber - 1) * limitNumber;
+
+    const filter = {};
+
+    if (status && ORDER_STATUSES.includes(status)) {
+      filter.status = status;
+    }
+
+    if (customer && isValidObjectId(customer)) {
+      filter.customer = customer;
+    }
+
+    const sortOption =
+      sort === "oldest"
+        ? {
+            createdAt: 1,
+          }
+        : {
+            createdAt: -1,
+          };
+
+    const [orders, totalOrders] = await Promise.all([
+      Order.find(filter)
+        .populate("customer", "name phone email")
+        .sort(sortOption)
+        .skip(skip)
+        .limit(limitNumber),
+
+      Order.countDocuments(filter),
+    ]);
+
+    return res.status(200).json({
+      success: true,
+
+      orders,
+
+      totalOrders,
+
+      currentPage: pageNumber,
+
+      totalPages: Math.ceil(totalOrders / limitNumber) || 1,
+    });
+  } catch (error) {
+    return sendServerError(res, error, "Get Orders Error");
+  }
+};
+
+export const getOrderById = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!isValidObjectId(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid order id.",
+      });
+    }
+
+    const order = await Order.findById(id)
+      .populate("customer", "name phone email")
+      .populate({
+        path: "orderItems",
+        populate: [
+          {
+            path: "product",
+            select: "name slug",
+          },
+          {
+            path: "variant",
+            select: "color size sku sellingPrice coverImage",
+          },
+        ],
+      });
+
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: "Order not found.",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
       order,
     });
   } catch (error) {
-    console.log(
-      "Create Order Error:",
-      error
+    return sendServerError(res, error, "Get Order By Id Error");
+  }
+};
+
+const createInventoryTransaction = async ({
+  variant,
+  type,
+  quantity,
+  previousStock,
+  newStock,
+  referenceId = null,
+  note = "",
+  createdBy,
+}) => {
+  return InventoryTransaction.create({
+    variant,
+    type,
+    quantity,
+    previousStock,
+    newStock,
+    referenceId,
+    note,
+    createdBy,
+  });
+};
+
+const deductStockForOrder = async (order, adminId, session) => {
+  await order.populate({
+    path: "orderItems",
+    populate: {
+      path: "variant",
+    },
+  });
+
+  for (const item of order.orderItems) {
+    const variant = await ProductVariant.findById(item.variant._id).session(
+      session,
     );
 
-    return res.status(500).json({
-      success: false,
-      message:
-        "Internal server error",
+    if (!variant) {
+      throw new Error("Variant not found.");
+    }
+
+    if (variant.currentStock < item.quantity) {
+      throw new Error(
+        `${variant.color}-${variant.size} has insufficient stock.`,
+      );
+    }
+
+    const previousStock = variant.currentStock;
+
+    const newStock = previousStock - item.quantity;
+
+    variant.currentStock = newStock;
+
+    await variant.save({
+      session,
+    });
+
+    await createInventoryTransaction({
+      variant: variant._id,
+
+      type: "SALE",
+
+      quantity: item.quantity,
+
+      previousStock,
+
+      newStock,
+
+      referenceId: order._id,
+
+      note: "Order confirmed",
+
+      createdBy: adminId,
     });
   }
 };
 
-export const getAllOrder = async (req, res) => {
+const restoreStockForOrder = async (
+  order,
+  adminId,
+  transactionType,
+  note,
+  session,
+) => {
+  await order.populate({
+    path: "orderItems",
+    populate: {
+      path: "variant",
+    },
+  });
+
+  for (const item of order.orderItems) {
+    const variant = await ProductVariant.findById(item.variant._id).session(
+      session,
+    );
+
+    if (!variant) {
+      continue;
+    }
+
+    const previousStock = variant.currentStock;
+
+    const newStock = previousStock + item.quantity;
+
+    variant.currentStock = newStock;
+
+    await variant.save({
+      session,
+    });
+
+    await createInventoryTransaction({
+      variant: variant._id,
+
+      type: transactionType,
+
+      quantity: item.quantity,
+
+      previousStock,
+
+      newStock,
+
+      referenceId: order._id,
+
+      note,
+
+      createdBy: adminId,
+    });
+  }
+};
+
+export const getCustomerOrders = async (req, res) => {
   try {
-    const {
-      page = 0,
-      limit = 10,
-      sortBy = "createdAt",
-      sortOrder = "desc",
-    } = req.query;
+    const { customerId } = req.params;
 
-    const pageNum = parseInt(page);
-    const limitNum = parseInt(limit);
+    const { page = 1, limit = 10 } = req.query;
 
-    const validSortFields = ["createdAt", "totalAmount", "status"];
-    const validSortOrders = ["asc", "desc"];
-
-    if (!validSortFields.includes(sortBy)) {
+    if (!isValidObjectId(customerId)) {
       return res.status(400).json({
         success: false,
-        message: `Invalid sortBy! Valid Options Are: ${validSortFields.join(", ")}`,
+        message: "Invalid customer id.",
       });
     }
 
-    if (!validSortOrders.includes(sortOrder)) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid sortOrder! Use 'asc' or 'desc'",
-      });
-    }
+    const pageNumber = Math.max(Number(page) || 1, 1);
 
-    const sortOptions = { [sortBy]: sortOrder === "asc" ? 1 : -1 };
+    const limitNumber = Math.min(Math.max(Number(limit) || 10, 1), 100);
 
-    const totalOrders = await Order.countDocuments();
+    const skip = (pageNumber - 1) * limitNumber;
 
-    const orders = await Order.find()
-      .populate("items.product", "name images")
-      .sort(sortOptions)
-      .skip(pageNum * limitNum)
-      .limit(limitNum);
+    const [orders, totalOrders] = await Promise.all([
+      Order.find({
+        customer: customerId,
+      })
+        .sort({
+          createdAt: -1,
+        })
+        .skip(skip)
+        .limit(limitNumber),
+
+      Order.countDocuments({
+        customer: customerId,
+      }),
+    ]);
 
     return res.status(200).json({
       success: true,
-      total: totalOrders,
-      page: pageNum,
-      totalPages: Math.ceil(totalOrders / limitNum),
       orders,
+      totalOrders,
+      currentPage: pageNumber,
+      totalPages: Math.ceil(totalOrders / limitNumber) || 1,
     });
   } catch (error) {
-    console.log("Error While Getting All Orders ::", error);
-    return res.status(500).json({
-      success: false,
-      message: "Internal Server Error Please Try Later!",
-    });
+    return sendServerError(res, error, "Get Customer Orders Error");
   }
 };
 
-export const getUserOrder = async (req, res) => {
-  try {
-    const { contact, page = 0, limit = 10 } = req.body;
+export const updateOrderStatus = async (req, res) => {
+  const session = await mongoose.startSession();
 
-    if (!contact) {
+  try {
+    session.startTransaction();
+
+    const { id } = req.params;
+
+    const { status } = req.body;
+
+    if (!isValidObjectId(id)) {
       return res.status(400).json({
         success: false,
-        message: "Contact Is Required!",
+        message: "Invalid order id.",
       });
     }
-    const orders = await Order.find({ "customer.contact": contact })
-      .limit(limit)
-      .skip(page * limit);
 
-    if (!orders || orders.length == 0) {
+    if (!ORDER_STATUSES.includes(status)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid order status.",
+      });
+    }
+
+    const order = await Order.findById(id).session(session);
+
+    if (!order) {
       return res.status(404).json({
-        success: true,
-        message: "No Order Found",
+        success: false,
+        message: "Order not found.",
       });
     }
 
+    /*
+       Deduct stock only once
+      */
+
+    if (status === "CONFIRMED" && !order.isStockDeducted) {
+      await deductStockForOrder(order, req.user._id, session);
+
+      order.isStockDeducted = true;
+    }
+
+    order.status = status;
+
+    await order.save({
+      session,
+    });
+
+    await session.commitTransaction();
+
     return res.status(200).json({
       success: true,
-      message: "Orders Fetched Successfully",
-      orders,
+      message: "Order status updated successfully.",
+      order,
     });
   } catch (error) {
-    console.log("Error While Get User Order ::", error);
-    return res.status(500).json({
-      success: false,
-      message: "Internal Server Error Please Try Later!",
-    });
+    await session.abortTransaction();
+
+    return sendServerError(res, error, "Update Order Status Error");
+  } finally {
+    session.endSession();
   }
 };
 
 export const cancelOrder = async (req, res) => {
+  const session = await mongoose.startSession();
+
   try {
+    session.startTransaction();
+
     const { id } = req.params;
 
-    if (!id) {
+    if (!isValidObjectId(id)) {
       return res.status(400).json({
         success: false,
-        message: "Order Id Is Required!",
+        message: "Invalid order id.",
       });
     }
 
-    const order = await Order.findByIdAndUpdate(
-      id,
-      { status: "Cancelled" },
-      { new: true },
-    );
+    const order = await Order.findById(id).session(session);
 
     if (!order) {
       return res.status(404).json({
         success: false,
-        message: "Order Not Found!",
+        message: "Order not found.",
       });
     }
 
+    if (order.status === "CANCELLED") {
+      return res.status(400).json({
+        success: false,
+        message: "Order already cancelled.",
+      });
+    }
+
+    if (["DELIVERED", "RETURNED"].includes(order.status)) {
+      return res.status(400).json({
+        success: false,
+        message: "Delivered orders cannot be cancelled.",
+      });
+    }
+
+    if (order.isStockDeducted) {
+      await restoreStockForOrder(
+        order,
+        req.user._id,
+        "CANCEL",
+        "Order cancelled",
+        session,
+      );
+
+      order.isStockDeducted = false;
+    }
+
+    order.status = "CANCELLED";
+
+    await order.save({
+      session,
+    });
+
+    await session.commitTransaction();
+
     return res.status(200).json({
       success: true,
-      message: "Order Cancelled Successfully",
+      message: "Order cancelled successfully.",
       order,
     });
   } catch (error) {
-    console.log("Error While Cancel Order ::", error);
-    return res.status(500).json({
-      success: false,
-      message: "Internal Server Error Please Try Later!",
-    });
+    await session.abortTransaction();
+
+    return sendServerError(res, error, "Cancel Order Error");
+  } finally {
+    session.endSession();
   }
 };
 
-export const editOrderStatus = async (req, res) => {
+export const requestReturn = async (req, res) => {
   try {
-    const { id, status, isDelivered } = req.body;
+    const { id } = req.params;
 
-    if (!id || !status) {
+    if (!isValidObjectId(id)) {
       return res.status(400).json({
         success: false,
-        message: "Order Id And Status Are Required!",
+        message: "Invalid order id.",
       });
     }
 
-    const order = await Order.findByIdAndUpdate(
-      id,
-      {
-        status,
-        isDelivered,
-      },
-      { new: true },
-    );
+    const order = await Order.findById(id);
 
     if (!order) {
       return res.status(404).json({
         success: false,
-        message: "Order Not Found!",
+        message: "Order not found.",
       });
     }
 
+    if (order.status !== "DELIVERED") {
+      return res.status(400).json({
+        success: false,
+        message: "Only delivered orders can be returned.",
+      });
+    }
+
+    order.status = "RETURN_REQUESTED";
+
+    await order.save();
+
     return res.status(200).json({
       success: true,
-      message: "Order Status Updated Successfully",
+      message: "Return request submitted successfully.",
       order,
     });
   } catch (error) {
-    console.log("Error While Edit Order Status ::", error);
-    return res.status(500).json({
-      success: false,
-      message: "Internal Server Error Please Try Later!",
+    return sendServerError(res, error, "Request Return Error");
+  }
+};
+
+export const approveReturn = async (req, res) => {
+  const session = await mongoose.startSession();
+
+  try {
+    session.startTransaction();
+
+    const { id } = req.params;
+
+    if (!isValidObjectId(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid order id.",
+      });
+    }
+
+    const order = await Order.findById(id).session(session);
+
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: "Order not found.",
+      });
+    }
+
+    if (order.status !== "RETURN_REQUESTED") {
+      return res.status(400).json({
+        success: false,
+        message: "Return request not found.",
+      });
+    }
+
+    /*
+       Restore stock
+      */
+
+    await restoreStockForOrder(
+      order,
+      req.user._id,
+      "RETURN",
+      "Order returned",
+      session,
+    );
+
+    order.status = "RETURNED";
+
+    order.isStockDeducted = false;
+
+    await order.save({
+      session,
     });
+
+    await session.commitTransaction();
+
+    return res.status(200).json({
+      success: true,
+      message: "Return approved successfully.",
+      order,
+    });
+  } catch (error) {
+    await session.abortTransaction();
+
+    return sendServerError(res, error, "Approve Return Error");
+  } finally {
+    session.endSession();
+  }
+};
+
+export const rejectReturn = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!isValidObjectId(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid order id.",
+      });
+    }
+
+    const order = await Order.findById(id);
+
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: "Order not found.",
+      });
+    }
+
+    if (order.status !== "RETURN_REQUESTED") {
+      return res.status(400).json({
+        success: false,
+        message: "Return request not found.",
+      });
+    }
+
+    order.status = "RETURN_REJECTED";
+
+    await order.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "Return request rejected successfully.",
+      order,
+    });
+  } catch (error) {
+    return sendServerError(res, error, "Reject Return Error");
+  }
+};
+
+export const getOrderSummary = async (req, res) => {
+  try {
+    const [
+      totalOrders,
+      placedOrders,
+      confirmedOrders,
+      shippedOrders,
+      deliveredOrders,
+      cancelledOrders,
+      returnedOrders,
+      revenueResult,
+    ] = await Promise.all([
+      Order.countDocuments(),
+
+      Order.countDocuments({
+        status: "PLACED",
+      }),
+
+      Order.countDocuments({
+        status: "CONFIRMED",
+      }),
+
+      Order.countDocuments({
+        status: "SHIPPED",
+      }),
+
+      Order.countDocuments({
+        status: "DELIVERED",
+      }),
+
+      Order.countDocuments({
+        status: "CANCELLED",
+      }),
+
+      Order.countDocuments({
+        status: "RETURNED",
+      }),
+
+      Order.aggregate([
+        {
+          $match: {
+            status: {
+              $in: ["DELIVERED", "SHIPPED"],
+            },
+          },
+        },
+
+        {
+          $group: {
+            _id: null,
+
+            totalRevenue: {
+              $sum: "$totalAmount",
+            },
+          },
+        },
+      ]),
+    ]);
+
+    return res.status(200).json({
+      success: true,
+
+      summary: {
+        totalOrders,
+
+        placedOrders,
+
+        confirmedOrders,
+
+        shippedOrders,
+
+        deliveredOrders,
+
+        cancelledOrders,
+
+        returnedOrders,
+
+        totalRevenue: revenueResult[0]?.totalRevenue || 0,
+      },
+    });
+  } catch (error) {
+    return sendServerError(res, error, "Get Order Summary Error");
+  }
+};
+
+export const getOrderAnalytics = async (req, res) => {
+  try {
+    const { days = 30 } = req.query;
+
+    const startDate = new Date();
+
+    startDate.setDate(startDate.getDate() - Number(days));
+
+    const analytics = await Order.aggregate([
+      {
+        $match: {
+          createdAt: {
+            $gte: startDate,
+          },
+        },
+      },
+
+      {
+        $group: {
+          _id: "$status",
+
+          count: {
+            $sum: 1,
+          },
+
+          revenue: {
+            $sum: "$totalAmount",
+          },
+        },
+      },
+    ]);
+
+    return res.status(200).json({
+      success: true,
+
+      period: `${days} days`,
+
+      analytics,
+    });
+  } catch (error) {
+    return sendServerError(res, error, "Order Analytics Error");
+  }
+};
+
+export const getMonthlySales = async (req, res) => {
+  try {
+    const year = Number(req.query.year) || new Date().getFullYear();
+
+    const sales = await Order.aggregate([
+      {
+        $match: {
+          status: "DELIVERED",
+
+          createdAt: {
+            $gte: new Date(year, 0, 1),
+
+            $lt: new Date(year + 1, 0, 1),
+          },
+        },
+      },
+
+      {
+        $group: {
+          _id: {
+            month: {
+              $month: "$createdAt",
+            },
+          },
+
+          sales: {
+            $sum: "$totalAmount",
+          },
+
+          orders: {
+            $sum: 1,
+          },
+        },
+      },
+
+      {
+        $sort: {
+          "_id.month": 1,
+        },
+      },
+    ]);
+
+    return res.status(200).json({
+      success: true,
+      year,
+      sales,
+    });
+  } catch (error) {
+    return sendServerError(res, error, "Monthly Sales Error");
+  }
+};
+
+export const getTopSellingProducts = async (req, res) => {
+  try {
+    const limit = Number(req.query.limit) || 10;
+
+    const products = await OrderItem.aggregate([
+      {
+        $group: {
+          _id: "$product",
+
+          totalSold: {
+            $sum: "$quantity",
+          },
+
+          revenue: {
+            $sum: "$totalPrice",
+          },
+        },
+      },
+
+      {
+        $sort: {
+          totalSold: -1,
+        },
+      },
+
+      {
+        $limit: limit,
+      },
+
+      {
+        $lookup: {
+          from: "products",
+
+          localField: "_id",
+
+          foreignField: "_id",
+
+          as: "product",
+        },
+      },
+
+      {
+        $unwind: "$product",
+      },
+    ]);
+
+    return res.status(200).json({
+      success: true,
+      products,
+    });
+  } catch (error) {
+    return sendServerError(res, error, "Top Products Error");
   }
 };
