@@ -1,19 +1,23 @@
 import express from "express";
 import {
-  addProduct,
+  createProduct,
   getProducts,
-  editProduct,
+  getProductById,
+  updateProduct,
   deleteProduct,
-  getProductId,
+  toggleProductStatus,
 } from "../controllers/product.controller.js";
 import { upload } from "../middleware/multer.middleware.js";
+import { adminAuthMiddleware } from "../middleware/adminAuth.middleware.js";
 
 const router = express.Router();
 
-router.post("/add", upload.array("images"), addProduct);
+router.post("/add", adminAuthMiddleware, upload.array("images"), createProduct);
 router.get("/get", getProducts);
-router.get("/get-product/:id", getProductId);
-router.patch("/edit/:id", editProduct);
-router.delete("/delete/:id", deleteProduct);
+router.get("/get-product/:id", getProductById);
+router.patch("/edit/:id", adminAuthMiddleware, updateProduct);
+router.delete("/delete/:id", adminAuthMiddleware, deleteProduct);
+router.patch("/toggle-status/:id", adminAuthMiddleware, toggleProductStatus);
 
 export default router;
+

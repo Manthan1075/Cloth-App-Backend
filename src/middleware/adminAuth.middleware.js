@@ -1,6 +1,6 @@
-import { Admin } from "../models/admin.model.js";
+import { User } from "../models/user.model.js";
 
-export const authMiddleware = async (req, res, next) => {
+export const adminAuthMiddleware = async (req, res, next) => {
   try {
     const id = req.cookies.id || req.body.id;
 
@@ -11,9 +11,9 @@ export const authMiddleware = async (req, res, next) => {
       });
     }
 
-    const Admin = await Admin.findById(id);
+    const Admin = await User.findById(id).select("-password");
 
-    if (Admin) {
+    if (Admin && Admin.role === "admin") {
       next();
     }
 
