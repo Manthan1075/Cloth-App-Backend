@@ -7,6 +7,7 @@ import {
   deleteImage,
   getCloudinaryPublicIdFromUrl,
 } from "../utils/imageUpload.js";
+import { Review } from "../models/review.model.js";
 
 const sendServerError = (res, error, label) => {
   console.error(`${label}:`, error);
@@ -277,6 +278,8 @@ export const getProductById = async (
       });
     }
 
+    const reviews = await Review.find({ product: product._id }).sort({ createdAt: -1 });
+
     const variants =
       await ProductVariant.find({
         product: product._id,
@@ -286,6 +289,7 @@ export const getProductById = async (
       success: true,
       product,
       variants,
+      reviews
     });
   } catch (error) {
     return sendServerError(
