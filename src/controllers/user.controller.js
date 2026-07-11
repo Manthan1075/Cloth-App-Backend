@@ -60,40 +60,28 @@ const normalizeEmail = (email) => email?.trim().toLowerCase();
 
 export const createUser = async (req, res) => {
   try {
-    const { name, phone, email, password } = req.body;
-    const finalEmail = normalizeEmail(email);
+    const { name, phone } = req.body;
 
-    if (!name || !phone || !finalEmail || !password) {
+    if (!name || !phone) {
       return res.status(400).json({
         success: false,
-        message:
-          "Name, phone, email, and password are required to create an account.",
+        message: "Name and phone number are required.",
       });
     }
 
-    const existingUser = await User.findOne({
-      $or: [{ phone }, { email: finalEmail }],
-    });
+    const existingUser = await User.findOne({ phone: phone.trim() });
 
     if (existingUser) {
-      const message =
-        existingUser.phone === phone
-          ? "An account with this phone number already exists. Please log in instead."
-          : "An account with this email already exists. Please use another email or log in.";
-
       return res.status(409).json({
         success: false,
-        message,
+        message:
+          "An account with this phone number already exists. Please log in instead.",
       });
     }
-
-    const hashedPassword = await hash(password, 10);
 
     const user = await User.create({
       name: name.trim(),
       phone: phone.trim(),
-      email: finalEmail,
-      password: hashedPassword,
     });
 
     return res.status(201).json({
@@ -103,10 +91,10 @@ export const createUser = async (req, res) => {
     });
   } catch (error) {
     if (error?.code === 11000) {
-      const field = Object.keys(error.keyPattern || {})[0] || "field";
       return res.status(409).json({
         success: false,
-        message: `This ${field} is already registered. Please use a different ${field}.`,
+        message:
+          "This phone number is already registered. Please use another number.",
       });
     }
 
