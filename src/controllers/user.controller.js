@@ -1,9 +1,6 @@
 ﻿import mongoose from "mongoose";
 import { compare, hash } from "bcrypt";
 import crypto from "crypto";
-import { createRequire } from "module";
-import { cert, getApps, initializeApp } from "firebase-admin/app";
-import { getAuth } from "firebase-admin/auth";
 import { User } from "../models/user.model.js";
 import { generateToken } from "../utils/generateToken.js";
 import {
@@ -17,16 +14,10 @@ import {
   getUserID,
   setResetToken,
   validateToken,
+  validateOTP,
+  setOTP,
 } from "../utils/store.js";
-
-const require = createRequire(import.meta.url);
-const serviceAccount = require("../config/for-us-efb0f-firebase-adminsdk-fbsvc-407a907b88.json");
-
-if (!getApps().length) {
-  initializeApp({
-    credential: cert(serviceAccount),
-  });
-}
+import axios from 'axios';
 
 const cookieOptions = {
   httpOnly: true,
@@ -56,17 +47,28 @@ const isValidObjectId = (id) => mongoose.Types.ObjectId.isValid(id);
 
 const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
+function generateOTP() {
+  return Math.floor(100000 + Math.random() * 900000).toString();
+}
+
 const normalizeEmail = (email) => email?.trim().toLowerCase();
 
 export const createUser = async (req, res) => {
   try {
-    const { name, phone } = req.body;
+    const { phone, otp } = req.body;
 
-    if (!name || !phone) {
+    if (!phone || !otp) {
       return res.status(400).json({
         success: false,
-        message: "Name and phone number are required.",
+        message: "phone and otp number are required.",
       });
+    }
+
+    if (!validateOTP(phone, otp)) {
+      return res.status(401).json({
+        success: false,
+        message: "OTP IS Invalid!"
+      })
     }
 
     const existingUser = await User.findOne({ phone: phone.trim() });
@@ -80,7 +82,6 @@ export const createUser = async (req, res) => {
     }
 
     const user = await User.create({
-      name: name.trim(),
       phone: phone.trim(),
     });
 
@@ -89,6 +90,7 @@ export const createUser = async (req, res) => {
       message: "Account created successfully.",
       user: sanitizeUser(user),
     });
+
   } catch (error) {
     if (error?.code === 11000) {
       return res.status(409).json({
@@ -104,23 +106,21 @@ export const createUser = async (req, res) => {
 
 export const loginUser = async (req, res) => {
   try {
-    const { firebaseToken } = req.body;
+    const { phone, otp } = req.body;
 
-    if (!firebaseToken) {
+
+    if (!phone || !otp) {
       return res.status(400).json({
         success: false,
-        message: "Firebase token is required to log in.",
+        message: "phone and otp number are required.",
       });
     }
 
-    const decodedToken = await getAuth().verifyIdToken(firebaseToken);
-    const phone = decodedToken.phone_number;
-
-    if (!phone) {
-      return res.status(400).json({
+    if (!validateOTP(phone, otp)) {
+      return res.status(401).json({
         success: false,
-        message: "The verified Firebase token does not include a phone number.",
-      });
+        message: "OTP IS Invalid!"
+      })
     }
 
     const user = await User.findOne({ phone });
@@ -166,6 +166,63 @@ export const loginUser = async (req, res) => {
     return sendServerError(res, error, "Login User Error");
   }
 };
+
+export const sendOTPToPhone = async (req, res) => {
+  try {
+    const { phone } = req.body;
+
+    if (!phone) {
+      return res.status(400).json({
+        success: false,
+        message: "Phone number is required",
+      });
+    }
+
+    const otpCode = generateOTP();
+
+    setOTP({ otp: otpCode, phone: phone, expiry: Date.now() + 5 * 60 * 1000 });
+
+    console.log("OTP :", otpCode);
+
+
+    // const response = await axios.post(
+    //   "https://mysmsgate.net/api/v1/send",
+    //   {
+    //     to: `${phone}`,
+    //     message: `Hey I Am There`,
+    //     device_id: process.env.SMS_DEVICE_ID,
+    //     slot: 0,
+    //   },
+    //   {
+    //     headers: {
+    //       Authorization: `Bearer ${process.env.SMS_API_KEY}`,
+    //       "Content-Type": "application/json"
+    //     }
+    //   }
+    // );
+
+    const response = {
+      otp: otpCode,
+      status: "sent"
+    }
+
+    console.log("RES :", response);
+
+
+    return res.status(200).json({
+      success: true,
+      message: "OTP SENT SUCCESSFULLY",
+      data: response.data
+    });
+
+  } catch (error) {
+    console.error("Error sending OTP to phone:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Internal Server Error, Please Try Again",
+    })
+  }
+}
 
 export const loginAdmin = async (req, res) => {
   try {

@@ -49,7 +49,6 @@ const productSchema = new mongoose.Schema(
   },
 );
 
-productSchema.index({ slug: 1 });
 productSchema.index({ category: 1 });
 
 export const Product = mongoose.model("Product", productSchema);

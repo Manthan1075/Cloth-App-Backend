@@ -11,6 +11,7 @@ import {
   changeAdminPassword,
   forgetPassword,
   resetPassword,
+  sendOTPToPhone,
 } from "../controllers/user.controller.js";
 import { authMiddleware } from "../middleware/auth.middleware.js";
 import { adminAuthMiddleware } from "../middleware/adminAuth.middleware.js";
@@ -24,6 +25,7 @@ router.post("/login", loginUser);
 router.post("/verify-phone", verifyPhoneForLogin);
 router.put("/edit-user/:id", authMiddleware, upload.single("avatar"), editUser);
 router.get("/get/:id", getUser);
+router.post("/send-otp", sendOTPToPhone);
 
 // Admin Routes
 router.post("/login-admin", loginAdmin);
