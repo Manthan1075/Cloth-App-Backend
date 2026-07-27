@@ -1,4 +1,4 @@
-﻿import mongoose from "mongoose";
+import mongoose from "mongoose";
 import { compare, hash } from "bcrypt";
 import crypto from "crypto";
 import { User } from "../models/user.model.js";
@@ -74,10 +74,10 @@ export const createUser = async (req, res) => {
     const existingUser = await User.findOne({ phone: phone.trim() });
 
     if (existingUser) {
-      return res.status(409).json({
-        success: false,
+      return res.status(200).json({
+        success: true,
         message:
-          "An account with this phone number already exists. Please log in instead.",
+          `Welcome back! Logged in successfully.`,
       });
     }
 
@@ -377,7 +377,7 @@ export const editUser = async (req, res) => {
 
 export const getUser = async (req, res) => {
   try {
-    const { id } = req.params;
+    const id = req.params?.id || req.user?.id || req.user?._id;
 
     if (!id) {
       return res.status(400).json({

@@ -25,6 +25,7 @@ router.post("/login", loginUser);
 router.post("/verify-phone", verifyPhoneForLogin);
 router.put("/edit-user/:id", authMiddleware, upload.single("avatar"), editUser);
 router.get("/get/:id", getUser);
+router.get("/get", authMiddleware, getUser);
 router.post("/send-otp", sendOTPToPhone);
 
 // Admin Routes

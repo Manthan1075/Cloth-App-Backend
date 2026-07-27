@@ -1,4 +1,5 @@
 import express from "express";
+import cors from "cors";
 import productRouter from "./routes/product.routes.js";
 import orderRouter from "./routes/order.routes.js";
 import categoryRouter from "./routes/category.routes.js";
@@ -14,6 +15,11 @@ const app = express();
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
+app.use(cors({
+  origin: ["http://localhost:5173"],
+  methods: ["GET", "POST", "PUT", "DELETE"],
+  credentials: true,
+}));
 
 app.use("/api/product", productRouter);
 app.use("/api/orders", orderRouter);
