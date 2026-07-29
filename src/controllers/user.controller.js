@@ -188,16 +188,23 @@ export const sendOTPToPhone = async (req, res) => {
     // const response = await axios.post(
     //   "https://mysmsgate.net/api/v1/send",
     //   {
-    //     to: `${phone}`,
-    //     message: `Hey I Am There`,
+    //     to: phone,
+    //     message: `CK-FASHION
+
+    //   Your verification code is: ${otpCode}
+
+    //   • Valid for 5 minutes
+    //   • Do not share this OTP with anyone
+
+    //   Thank you for choosing CK-FASHION!`,
     //     device_id: process.env.SMS_DEVICE_ID,
     //     slot: 0,
     //   },
     //   {
     //     headers: {
     //       Authorization: `Bearer ${process.env.SMS_API_KEY}`,
-    //       "Content-Type": "application/json"
-    //     }
+    //       "Content-Type": "application/json",
+    //     },
     //   }
     // );
 
@@ -205,8 +212,6 @@ export const sendOTPToPhone = async (req, res) => {
       otp: otpCode,
       status: "sent"
     }
-
-    console.log("RES :", response);
 
 
     return res.status(200).json({
@@ -224,10 +229,60 @@ export const sendOTPToPhone = async (req, res) => {
   }
 }
 
+export const createAdmin = async (req, res) => {
+  try {
+
+    const { name, phone, email, password } = req.body;
+    const finalEmail = normalizeEmail(email);
+
+    if (!finalEmail || !password) {
+      return res.status(400).json({
+        success: false,
+        message: "Email and password are required.",
+      });
+    }
+
+    const isUserExist = await User.findOne({ email: finalEmail, role: "admin" });
+    if (isUserExist) {
+      return res.status(400).json({
+        success: false,
+        message: "Admin account already exist.",
+      });
+    }
+
+    const hashedPassword = await hash(password, 10);
+    const newUser = new User({
+      name,
+      phone,
+      email: finalEmail,
+      password: hashedPassword,
+      role: "admin",
+    });
+
+    await newUser.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "Admin created successfully.",
+      user: sanitizeUser(newUser),
+    });
+
+  } catch (error) {
+    console.log("createAdmin Error", error)
+    return res.status(500).json({
+      success: false,
+      message: "Internal Server Error, Please Try Again",
+    })
+  }
+}
+
 export const loginAdmin = async (req, res) => {
   try {
     const { email, password } = req.body;
     const finalEmail = normalizeEmail(email);
+
+
+    console.log(finalEmail);
 
     if (!finalEmail || !password) {
       return res.status(400).json({

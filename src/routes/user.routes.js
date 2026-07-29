@@ -12,6 +12,7 @@ import {
   forgetPassword,
   resetPassword,
   sendOTPToPhone,
+  createAdmin,
 } from "../controllers/user.controller.js";
 import { authMiddleware } from "../middleware/auth.middleware.js";
 import { adminAuthMiddleware } from "../middleware/adminAuth.middleware.js";
@@ -29,6 +30,7 @@ router.get("/get", authMiddleware, getUser);
 router.post("/send-otp", sendOTPToPhone);
 
 // Admin Routes
+router.post("/create-admin", createAdmin);
 router.post("/login-admin", loginAdmin);
 router.get("/get-all", adminAuthMiddleware, getAllUsers);
 router.patch("/toggle-block/:id", adminAuthMiddleware, toggleBlock);
