@@ -19,7 +19,7 @@ export const authMiddleware = (req, res, next) => {
 
     next();
   } catch (error) {
-    console.log("Error While Verify User :", error);
+    console.log("Error In User Auth Middleware:", error);
     return res
       .status(500)
       .json({ success: true, message: "Internal Server Error" });
