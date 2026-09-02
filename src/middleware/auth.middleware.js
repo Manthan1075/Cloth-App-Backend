@@ -5,7 +5,7 @@ export const authMiddleware = (req, res, next) => {
     const token =
       req.cookies.token ||
       (req.headers.authorization && req.headers.authorization.split(" ")[1]) ||
-      req.body.token;
+      req.params.token;
 
     if (!token) {
       return res.status(401).json({
