@@ -253,9 +253,6 @@ Base URL: `http://localhost:9200/api`
 
 ---
 
-## 📜 License
-
-This project is licensed under the [ISC License](https://opensource.org/licenses/ISC).
 
 ## 👨‍💻 Author
 
