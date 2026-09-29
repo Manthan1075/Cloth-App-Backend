@@ -219,16 +219,46 @@ export const getProducts = async (req, res) => {
           )
           .sort(sortOption)
           .skip(skip)
-          .limit(limitNumber),
+          .limit(limitNumber)
+          .lean(),
 
         Product.countDocuments(
           filter
         ),
       ]);
 
+    // Enrich each product with its first active variant's price & image data
+    const productIds = products.map(p => p._id);
+    const variants = await ProductVariant.find({
+      product: { $in: productIds },
+      isActive: true,
+    }).sort({ createdAt: 1 }).lean();
+
+    // Group variants by product id
+    const variantMap = {};
+    for (const v of variants) {
+      const pid = v.product.toString();
+      if (!variantMap[pid]) {
+        variantMap[pid] = v;
+      }
+    }
+
+    // Attach variant data to each product
+    const enrichedProducts = products.map(product => {
+      const variant = variantMap[product._id.toString()];
+      return {
+        ...product,
+        coverImage: variant?.coverImage || null,
+        sellingPrice: variant?.sellingPrice ?? null,
+        mrp: variant?.mrp ?? null,
+        images: variant?.images || [],
+        variants: variant ? [variant] : [],
+      };
+    });
+
     return res.status(200).json({
       success: true,
-      products,
+      products: enrichedProducts,
       totalProducts,
       currentPage:
         pageNumber,

@@ -185,26 +185,26 @@ export const sendOTPToPhone = async (req, res) => {
     console.log("OTP :", otpCode);
 
 
-    const response = await axios.post(
-      "https://mysmsgate.net/api/v1/send",
-      {
-        to: phone,
-        message: `${otpCode}`,
-        device_id: process.env.SMS_DEVICE_ID,
-        slot: 0,
-      },
-      {
-        headers: {
-          Authorization: `Bearer ${process.env.SMS_API_KEY}`,
-          "Content-Type": "application/json",
-        },
-      }
-    );
+    // const response = await axios.post(
+    //   "https://mysmsgate.net/api/v1/send",
+    //   {
+    //     to: phone,
+    //     message: `${otpCode}`,
+    //     device_id: process.env.SMS_DEVICE_ID,
+    //     slot: 0,
+    //   },
+    //   {
+    //     headers: {
+    //       Authorization: `Bearer ${process.env.SMS_API_KEY}`,
+    //       "Content-Type": "application/json",
+    //     },
+    //   }
+    // );
 
-    // const response = {
-    //   otp: otpCode,
-    //   status: "sent"
-    // }
+    const response = {
+      otp: otpCode,
+      status: "sent"
+    }
 
 
     return res.status(200).json({

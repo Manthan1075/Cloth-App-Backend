@@ -42,7 +42,6 @@ export const sendEmail = async ({ to, subject, type, data }) => {
       subject,
       html,
     });
-
     console.log(`[Email] Sent → ${to} | Message ID: ${info.messageId}`);
 
     return {
