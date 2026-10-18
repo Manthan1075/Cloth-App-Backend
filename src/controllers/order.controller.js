@@ -19,7 +19,7 @@ const isValidObjectId = (id) => mongoose.Types.ObjectId.isValid(id);
 const generateOrderNumber = () => {
   const random = Math.floor(1000 + Math.random() * 9000);
 
-  return `CKF-${Date.now()}-${random}`;
+  return `AURV-${Date.now()}-${random}`;
 };
 
 const ORDER_STATUSES = [
@@ -42,11 +42,15 @@ export const createOrder = async (req, res) => {
     session.startTransaction();
 
     const {
-      customerId,
+      customerId: customerIdField,
+      customer: customerField,
       deliveryAddress,
       items,
       deliveryCharges = 0,
+      paymentMethod = "COD",
     } = req.body;
+
+    const customerId = customerIdField || customerField;
 
     if (!customerId) {
       return res.status(400).json({
@@ -142,6 +146,8 @@ export const createOrder = async (req, res) => {
           deliveryCharges,
 
           totalAmount,
+
+          paymentMethod,
 
           status: "PLACED",
 
