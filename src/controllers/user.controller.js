@@ -18,6 +18,7 @@ import {
   setOTP,
 } from "../utils/store.js";
 import axios from 'axios';
+import { sendSms } from "../utils/sendOTP.js";
 
 const cookieOptions = {
   httpOnly: true,
@@ -200,6 +201,9 @@ export const sendOTPToPhone = async (req, res) => {
     //     },
     //   }
     // );
+
+    const result = await sendSms(phone, `${otpCode}`)
+    console.log('SMS RES :', result);
 
     const response = {
       otp: otpCode,

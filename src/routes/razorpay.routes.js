@@ -1,14 +1,8 @@
 import express from "express";
-import {
-  createRazorpayOrder,
-  verifyRazorpayPayment,
-} from "../controllers/razorpay.controller.js";
+import { verifyRazorpayPayment } from "../controllers/razorpay.controller.js";
 import { authMiddleware } from "../middleware/auth.middleware.js";
 
 const router = express.Router();
-
-// Create a Razorpay order (requires logged-in user)
-router.post("/create-order", authMiddleware, createRazorpayOrder);
 
 // Verify Razorpay payment signature (requires logged-in user)
 router.post("/verify-payment", authMiddleware, verifyRazorpayPayment);

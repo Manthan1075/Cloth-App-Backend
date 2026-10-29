@@ -95,6 +95,11 @@ MONGO_URI=your_mongodb_connection_string
 # Authentication
 JWT_SECRET=your_jwt_secret_key
 
+# Razorpay test payments (use Test Mode keys from the Razorpay Dashboard)
+RAZORPAY_MODE=test
+RAZORPAY_KEY_ID=rzp_test_your_key_id
+RAZORPAY_KEY_SECRET=your_test_key_secret
+
 # Cloudinary Integration
 CLOUDINARY_CLOUD_NAME=your_cloudinary_cloud_name
 CLOUDINARY_API_KEY=your_cloudinary_api_key
@@ -115,6 +120,10 @@ SMTP_PASSWORD=your_app_password
 SMS_API_KEY=your_sms_api_key
 SMS_DEVICE_ID=your_sms_device_id
 ```
+
+Online checkout only accepts `RAZORPAY_KEY_ID` and `RAZORPAY_KEY_SECRET` from the backend environment. Keep `RAZORPAY_MODE=test` while testing; the backend rejects a non-test Key ID in this mode. The browser receives only the public Key ID from the server. Restart the backend after changing environment values.
+
+To test checkout, select **Pay Online** on the checkout page and use the payment details provided by Razorpay's Test Mode in your Dashboard. Test payments do not collect real money. A verified payment is saved to the order as `paymentStatus: PAID`, with its Razorpay order and payment IDs. Failed or closed checkouts remain unpaid.
 
 ---
 

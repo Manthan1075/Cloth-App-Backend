@@ -23,6 +23,18 @@ const orderSchema = new mongoose.Schema(
     ],
 
     deliveryAddress: {
+      fullName: {
+        type: String,
+        trim: true,
+        default: "",
+      },
+
+      phone: {
+        type: String,
+        trim: true,
+        default: "",
+      },
+
       address: {
         type: String,
         required: true,

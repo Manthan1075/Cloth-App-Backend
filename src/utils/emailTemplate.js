@@ -8,11 +8,11 @@ const buttonStyle = `
   font-weight:bold;
 `;
 
-export const orderPlacedTemplate = ({ customerName, orderId, items = [] }) => {
+export const orderPlacedTemplate = ({ customerName, orderId, orderNumber, items = [], totalAmount, paymentMethod }) => {
   return `
     <div style="font-family:Arial,sans-serif;max-width:600px;margin:auto;padding:20px;border:1px solid #e5e7eb;border-radius:10px;">
       
-      <h2 style="color:#16a34a;"> New Order Received</h2>
+      <h2 style="color:#a7793d;">Aureve order received</h2>
 
       <p>A new order has been placed.</p>
 
@@ -21,7 +21,7 @@ export const orderPlacedTemplate = ({ customerName, orderId, items = [] }) => {
       <h3>Order Details</h3>
 
       <p><strong>Customer:</strong> ${customerName}</p>
-      <p><strong>Order ID:</strong> ${orderId}</p>
+      <p><strong>Order:</strong> ${orderNumber || orderId}</p>
 
       <p><strong>Items:</strong></p>
 
@@ -37,15 +37,16 @@ export const orderPlacedTemplate = ({ customerName, orderId, items = [] }) => {
           .join("")}
       </ul>
 
-      <p><strong>Total Items:</strong> ${items.length}</p>
+      <p><strong>Total:</strong> ₹${Number(totalAmount || 0).toLocaleString("en-IN")}</p>
+      <p><strong>Payment:</strong> ${paymentMethod === "RAZORPAY" ? "Paid online" : "Cash on delivery"}</p>
 
       <br />
 
       <a
-        href="${process.env.FRONTEND_URL}/admin/orders/${orderId}"
+        href="${process.env.FRONTEND_URL}/orders/${orderId}"
         style="${buttonStyle}"
       >
-        View Order
+        View order
       </a>
 
     </div>

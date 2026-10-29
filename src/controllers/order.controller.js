@@ -4,6 +4,8 @@ import { OrderItem } from "../models/orderItem.model.js";
 import { User } from "../models/user.model.js";
 import { Product } from "../models/product.model.js";
 import { ProductVariant } from "../models/productVariant.model.js";
+import Razorpay from "razorpay";
+import { sendOrderEmails } from "../utils/orderNotification.js";
 
 const sendServerError = (res, error, label) => {
   console.error(`${label}:`, error);
@@ -42,20 +44,32 @@ export const createOrder = async (req, res) => {
     session.startTransaction();
 
     const {
-      customerId: customerIdField,
       customer: customerField,
       deliveryAddress,
       items,
-      deliveryCharges = 0,
       paymentMethod = "COD",
     } = req.body;
 
-    const customerId = customerIdField || customerField;
+    const customerId = req.user?._id;
 
     if (!customerId) {
       return res.status(400).json({
         success: false,
         message: "Customer id is required.",
+      });
+    }
+
+    if (customerField && String(customerField) !== String(customerId)) {
+      return res.status(403).json({
+        success: false,
+        message: "You can only place orders for your own account.",
+      });
+    }
+
+    if (!["COD", "RAZORPAY"].includes(paymentMethod)) {
+      return res.status(400).json({
+        success: false,
+        message: "Unsupported payment method.",
       });
     }
 
@@ -89,8 +103,11 @@ export const createOrder = async (req, res) => {
     for (const item of items) {
       const { variantId, quantity } = item;
 
-      if (!variantId || !quantity) {
-        throw new Error("Variant and quantity are required.");
+      if (!variantId || !Number.isInteger(Number(quantity)) || Number(quantity) < 1) {
+        return res.status(400).json({
+          success: false,
+          message: "Each order item needs a valid selected product variant and quantity.",
+        });
       }
 
       const variant = await ProductVariant.findById(variantId)
@@ -130,7 +147,8 @@ export const createOrder = async (req, res) => {
       });
     }
 
-    const totalAmount = subTotal + Number(deliveryCharges);
+    const serverDeliveryCharges = subTotal >= 499 ? 0 : 49;
+    const totalAmount = Number((subTotal + serverDeliveryCharges).toFixed(2));
 
     const order = await Order.create(
       [
@@ -143,7 +161,7 @@ export const createOrder = async (req, res) => {
 
           subTotal,
 
-          deliveryCharges,
+          deliveryCharges: serverDeliveryCharges,
 
           totalAmount,
 
@@ -190,13 +208,43 @@ export const createOrder = async (req, res) => {
       session,
     });
 
+    let razorpayCheckout = null;
+    if (paymentMethod === "RAZORPAY") {
+      const keyId = process.env.RAZORPAY_KEY_ID;
+      const keySecret = process.env.RAZORPAY_KEY_SECRET;
+      if (!keyId || !keySecret) {
+        throw new Error("Razorpay is not configured on the server.");
+      }
+      if (process.env.RAZORPAY_MODE === "test" && !keyId.startsWith("rzp_test_")) {
+        throw new Error("Razorpay is set to test mode, but the configured key is not a test key.");
+      }
+      const gateway = new Razorpay({ key_id: keyId, key_secret: keySecret });
+      const gatewayOrder = await gateway.orders.create({
+        amount: Math.round(totalAmount * 100),
+        currency: "INR",
+        receipt: createdOrder.orderNumber,
+        notes: { shopOrderId: String(createdOrder._id) },
+      });
+      createdOrder.razorpayOrderId = gatewayOrder.id;
+      await createdOrder.save({ session });
+      razorpayCheckout = {
+        keyId,
+        orderId: gatewayOrder.id,
+        amount: gatewayOrder.amount,
+        currency: gatewayOrder.currency,
+      };
+    }
+
     await session.commitTransaction();
+
+    if (paymentMethod === "COD") await sendOrderEmails(createdOrder._id);
 
     return res.status(201).json({
       success: true,
       message: "Order placed successfully.",
 
       order: createdOrder,
+      razorpay: razorpayCheckout,
     });
   } catch (error) {
     await session.abortTransaction();
@@ -300,6 +348,10 @@ export const getOrderById = async (req, res) => {
         success: false,
         message: "Order not found.",
       });
+    }
+
+    if (String(order.customer?._id || order.customer) !== String(req.user._id) && req.user.role !== "admin") {
+      return res.status(403).json({ success: false, message: "You are not allowed to view this order." });
     }
 
     return res.status(200).json({
@@ -518,6 +570,14 @@ export const updateOrderStatus = async (req, res) => {
       });
     }
 
+    if (status === "CONFIRMED" && order.paymentMethod === "RAZORPAY" && order.paymentStatus !== "PAID") {
+      await session.abortTransaction();
+      return res.status(409).json({
+        success: false,
+        message: "This online order cannot be confirmed until its payment is verified.",
+      });
+    }
+
     /*
        Deduct stock only once
       */
@@ -572,6 +632,11 @@ export const cancelOrder = async (req, res) => {
         success: false,
         message: "Order not found.",
       });
+    }
+
+    if (String(order.customer) !== String(req.user._id) && req.user.role !== "admin") {
+      await session.abortTransaction();
+      return res.status(403).json({ success: false, message: "You are not allowed to cancel this order." });
     }
 
     if (order.status === "CANCELLED") {
