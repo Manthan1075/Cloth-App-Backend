@@ -9,9 +9,20 @@ import {
 const sendServerError = (res, error, label) => {
   console.error(`${label}:`, error);
 
-  return res.status(500).json({
+  const isNetworkError = (currentError) =>
+    ["ETIMEDOUT", "ENETUNREACH", "ECONNRESET", "ECONNREFUSED", "EAI_AGAIN"].includes(
+      currentError?.code,
+    ) ||
+    (Array.isArray(currentError?.errors) &&
+      currentError.errors.some(isNetworkError));
+
+  const isUnavailable = isNetworkError(error);
+
+  return res.status(isUnavailable ? 503 : 500).json({
     success: false,
-    message: "Something went wrong on our side. Please try again later.",
+    message: isUnavailable
+      ? "A required service is temporarily unavailable. Please try again later."
+      : "Something went wrong on our side. Please try again later.",
   });
 };
 

@@ -116,3 +116,6 @@ dist
 .yarn/build-state.yml
 .yarn/install-state.gz
 .pnp.*
+
+# Locally stored image uploads (Cloudinary fallback)
+/uploads/

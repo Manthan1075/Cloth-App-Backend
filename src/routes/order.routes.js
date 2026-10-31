@@ -22,7 +22,6 @@ const router = express.Router();
 // Customer/General Routes
 router.post("/", authMiddleware, createOrder);
 router.get("/customer/:customerId", authMiddleware, getCustomerOrders);
-router.get("/:id", authMiddleware, getOrderById);
 router.patch("/:id/cancel", authMiddleware, cancelOrder);
 router.patch("/:id/request-return", authMiddleware, requestReturn);
 
@@ -32,9 +31,13 @@ router.get("/summary", adminAuthMiddleware, getOrderSummary);
 router.get("/analytics", adminAuthMiddleware, getOrderAnalytics);
 router.get("/monthly-sales", adminAuthMiddleware, getMonthlySales);
 router.get("/top-products", adminAuthMiddleware, getTopSellingProducts);
+
+// Keep the catch-all order ID route after named GET endpoints.
+router.get("/:id", authMiddleware, getOrderById);
+
+// Admin order actions
 router.patch("/:id/status", adminAuthMiddleware, updateOrderStatus);
 router.patch("/:id/approve-return", adminAuthMiddleware, approveReturn);
 router.patch("/:id/reject-return", adminAuthMiddleware, rejectReturn);
 
 export default router;
-

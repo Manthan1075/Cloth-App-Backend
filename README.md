@@ -115,6 +115,7 @@ SMTP_HOST=smtp.gmail.com
 SMTP_PORT=587
 SMTP_USER=your_email@gmail.com
 SMTP_PASSWORD=your_app_password
+ADMIN_EMAIL=orders@yourdomain.com
 
 # SMS API Configuration (OTP)
 SMS_API_KEY=your_sms_api_key

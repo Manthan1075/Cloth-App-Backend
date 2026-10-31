@@ -19,9 +19,20 @@ export const authMiddleware = (req, res, next) => {
 
     next();
   } catch (error) {
-    console.log("Error In User Auth Middleware:", error);
+    if (
+      ["TokenExpiredError", "JsonWebTokenError", "NotBeforeError"].includes(
+        error?.name,
+      )
+    ) {
+      return res.status(401).json({
+        success: false,
+        message: "Your session is invalid or expired. Please log in again.",
+      });
+    }
+
+    console.error("Error In User Auth Middleware:", error);
     return res
       .status(500)
-      .json({ success: true, message: "Internal Server Error" });
+      .json({ success: false, message: "Internal Server Error" });
   }
 };

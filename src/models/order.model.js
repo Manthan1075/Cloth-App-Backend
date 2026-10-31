@@ -22,6 +22,11 @@ const orderSchema = new mongoose.Schema(
       },
     ],
 
+    isStockDeducted: {
+      type: Boolean,
+      default: false,
+    },
+
     deliveryAddress: {
       fullName: {
         type: String,

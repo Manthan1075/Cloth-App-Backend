@@ -4,6 +4,7 @@ import { OrderItem } from "../models/orderItem.model.js";
 import { User } from "../models/user.model.js";
 import { Product } from "../models/product.model.js";
 import { ProductVariant } from "../models/productVariant.model.js";
+import { InventoryTransaction } from "../models/inventoryTransaction.model.js";
 import Razorpay from "razorpay";
 import { sendOrderEmails } from "../utils/orderNotification.js";
 
@@ -36,6 +37,28 @@ const ORDER_STATUSES = [
   "RETURNED",
   "CANCELLED",
 ];
+
+const ADMIN_STATUS_TRANSITIONS = {
+  PLACED: ["CONFIRMED", "PACKED", "SHIPPED", "DELIVERED", "CANCELLED"],
+  CONFIRMED: ["PACKED", "SHIPPED", "DELIVERED", "CANCELLED"],
+  PACKED: ["SHIPPED", "DELIVERED", "CANCELLED"],
+  SHIPPED: ["DELIVERED"],
+  DELIVERED: [],
+  CANCELLED: [],
+  RETURN_REQUESTED: [],
+  RETURN_APPROVED: [],
+  RETURN_REJECTED: [],
+  RETURNED: [],
+};
+
+const hasStockBeenDeducted = (order) => order.isStockDeducted || [
+  "CONFIRMED",
+  "PACKED",
+  "SHIPPED",
+  "DELIVERED",
+  "RETURN_REQUESTED",
+  "RETURN_REJECTED",
+].includes(order.status);
 
 export const createOrder = async (req, res) => {
   const session = await mongoose.startSession();
@@ -237,7 +260,10 @@ export const createOrder = async (req, res) => {
 
     await session.commitTransaction();
 
-    if (paymentMethod === "COD") await sendOrderEmails(createdOrder._id);
+    await sendOrderEmails(createdOrder._id, {
+      notifyAdmin: true,
+      notifyCustomer: paymentMethod === "COD",
+    });
 
     return res.status(201).json({
       success: true,
@@ -262,6 +288,7 @@ export const getOrders = async (req, res) => {
       limit = 10,
       status,
       customer,
+      search,
       sort = "newest",
     } = req.query;
 
@@ -281,6 +308,22 @@ export const getOrders = async (req, res) => {
       filter.customer = customer;
     }
 
+    const normalizedSearch = String(search || "").trim().slice(0, 100);
+    if (normalizedSearch) {
+      const escapedSearch = normalizedSearch.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const matchingCustomers = await User.find({
+        $or: [
+          { name: { $regex: escapedSearch, $options: "i" } },
+          { email: { $regex: escapedSearch, $options: "i" } },
+          { phone: { $regex: escapedSearch, $options: "i" } },
+        ],
+      }).distinct("_id");
+      filter.$or = [
+        { orderNumber: { $regex: escapedSearch, $options: "i" } },
+        { customer: { $in: matchingCustomers } },
+      ];
+    }
+
     const sortOption =
       sort === "oldest"
         ? {
@@ -293,6 +336,13 @@ export const getOrders = async (req, res) => {
     const [orders, totalOrders] = await Promise.all([
       Order.find(filter)
         .populate("customer", "name phone email")
+        .populate({
+          path: "orderItems",
+          populate: [
+            { path: "product", select: "name images coverImage" },
+            { path: "variant", select: "color size sku coverImage images" },
+          ],
+        })
         .sort(sortOption)
         .skip(skip)
         .limit(limitNumber),
@@ -334,11 +384,11 @@ export const getOrderById = async (req, res) => {
         populate: [
           {
             path: "product",
-            select: "name slug",
+            select: "name slug images coverImage",
           },
           {
             path: "variant",
-            select: "color size sku sellingPrice coverImage",
+            select: "color size sku sellingPrice coverImage images",
           },
         ],
       });
@@ -372,17 +422,22 @@ const createInventoryTransaction = async ({
   referenceId = null,
   note = "",
   createdBy,
+  session,
 }) => {
-  return InventoryTransaction.create({
-    variant,
-    type,
-    quantity,
-    previousStock,
-    newStock,
-    referenceId,
-    note,
-    createdBy,
-  });
+  const [transaction] = await InventoryTransaction.create(
+    [{
+      variant,
+      type,
+      quantity,
+      previousStock,
+      newStock,
+      referenceId,
+      note,
+      createdBy,
+    }],
+    { session },
+  );
+  return transaction;
 };
 
 const deductStockForOrder = async (order, adminId, session) => {
@@ -434,6 +489,7 @@ const deductStockForOrder = async (order, adminId, session) => {
       note: "Order confirmed",
 
       createdBy: adminId,
+      session,
     });
   }
 };
@@ -487,6 +543,7 @@ const restoreStockForOrder = async (
       note,
 
       createdBy: adminId,
+      session,
     });
   }
 };
@@ -504,6 +561,13 @@ export const getCustomerOrders = async (req, res) => {
       });
     }
 
+    if (String(customerId) !== String(req.user._id) && req.user.role !== "admin") {
+      return res.status(403).json({
+        success: false,
+        message: "You are not allowed to view this customer's orders.",
+      });
+    }
+
     const pageNumber = Math.max(Number(page) || 1, 1);
 
     const limitNumber = Math.min(Math.max(Number(limit) || 10, 1), 100);
@@ -514,6 +578,13 @@ export const getCustomerOrders = async (req, res) => {
       Order.find({
         customer: customerId,
       })
+        .populate({
+          path: "orderItems",
+          populate: [
+            { path: "product", select: "name slug images coverImage" },
+            { path: "variant", select: "color size coverImage images" },
+          ],
+        })
         .sort({
           createdAt: -1,
         })
@@ -548,6 +619,7 @@ export const updateOrderStatus = async (req, res) => {
     const { status } = req.body;
 
     if (!isValidObjectId(id)) {
+      await session.abortTransaction();
       return res.status(400).json({
         success: false,
         message: "Invalid order id.",
@@ -555,18 +627,36 @@ export const updateOrderStatus = async (req, res) => {
     }
 
     if (!ORDER_STATUSES.includes(status)) {
+      await session.abortTransaction();
       return res.status(400).json({
         success: false,
         message: "Invalid order status.",
       });
     }
 
+    if (["RETURN_REQUESTED", "RETURN_APPROVED", "RETURN_REJECTED", "RETURNED"].includes(status)) {
+      await session.abortTransaction();
+      return res.status(400).json({
+        success: false,
+        message: "Use the return review actions to process a return.",
+      });
+    }
+
     const order = await Order.findById(id).session(session);
 
     if (!order) {
+      await session.abortTransaction();
       return res.status(404).json({
         success: false,
         message: "Order not found.",
+      });
+    }
+
+    if (status !== order.status && !ADMIN_STATUS_TRANSITIONS[order.status]?.includes(status)) {
+      await session.abortTransaction();
+      return res.status(409).json({
+        success: false,
+        message: `Order status cannot move from ${order.status} to ${status}.`,
       });
     }
 
@@ -578,14 +668,27 @@ export const updateOrderStatus = async (req, res) => {
       });
     }
 
+    if (hasStockBeenDeducted(order)) order.isStockDeducted = true;
+
     /*
        Deduct stock only once
       */
 
-    if (status === "CONFIRMED" && !order.isStockDeducted) {
+    if (["CONFIRMED", "PACKED", "SHIPPED", "DELIVERED"].includes(status) && !order.isStockDeducted) {
       await deductStockForOrder(order, req.user._id, session);
 
       order.isStockDeducted = true;
+    }
+
+    if (status === "CANCELLED" && order.isStockDeducted) {
+      await restoreStockForOrder(
+        order,
+        req.user._id,
+        "CANCEL",
+        "Order cancelled",
+        session,
+      );
+      order.isStockDeducted = false;
     }
 
     order.status = status;
@@ -653,7 +756,8 @@ export const cancelOrder = async (req, res) => {
       });
     }
 
-    if (order.isStockDeducted) {
+    if (hasStockBeenDeducted(order)) {
+      order.isStockDeducted = true;
       await restoreStockForOrder(
         order,
         req.user._id,
@@ -707,6 +811,13 @@ export const requestReturn = async (req, res) => {
       });
     }
 
+    if (String(order.customer) !== String(req.user._id) && req.user.role !== "admin") {
+      return res.status(403).json({
+        success: false,
+        message: "You are not allowed to request a return for this order.",
+      });
+    }
+
     if (order.status !== "DELIVERED") {
       return res.status(400).json({
         success: false,
@@ -756,6 +867,14 @@ export const approveReturn = async (req, res) => {
       return res.status(400).json({
         success: false,
         message: "Return request not found.",
+      });
+    }
+
+    if (!hasStockBeenDeducted(order)) {
+      await session.abortTransaction();
+      return res.status(409).json({
+        success: false,
+        message: "Stock was not deducted for this order, so it cannot be restocked as a return.",
       });
     }
 

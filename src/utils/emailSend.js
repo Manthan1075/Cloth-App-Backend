@@ -3,6 +3,7 @@ import {
   forgetPassTemplate,
   orderCanceledTemplate,
   orderPlacedTemplate,
+  adminOrderPlacedTemplate,
 } from "./emailTemplate.js";
 
 const transporter = createTransport({
@@ -24,6 +25,10 @@ export const sendEmail = async ({ to, subject, type, data }) => {
         html = orderPlacedTemplate(data);
         break;
 
+      case "adminOrderPlaced":
+        html = adminOrderPlacedTemplate(data);
+        break;
+
       case "orderCancelled":
         html = orderCanceledTemplate(data);
         break;
@@ -37,7 +42,7 @@ export const sendEmail = async ({ to, subject, type, data }) => {
     }
 
     const info = await transporter.sendMail({
-      from: `"CK Fashion" <${process.env.SMTP_USER}>`,
+      from: `"AUREVE" <${process.env.SMTP_USER}>`,
       to,
       subject,
       html,

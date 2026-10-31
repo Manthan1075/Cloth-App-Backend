@@ -53,7 +53,7 @@ export const verifyRazorpayPayment = async (req, res) => {
     order.paymentStatus = "PAID";
     order.razorpayPaymentId = razorpay_payment_id;
     await order.save();
-    await sendOrderEmails(order._id);
+    await sendOrderEmails(order._id, { notifyAdmin: false, notifyCustomer: true });
 
     return res.status(200).json({
       success: true,
